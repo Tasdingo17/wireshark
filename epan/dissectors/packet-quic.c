@@ -610,6 +610,7 @@ static const value_string quic_v2_long_packet_type_vals[] = {
 #define FT_CONNECTION_CLOSE_TPT     0x1c
 #define FT_CONNECTION_CLOSE_APP     0x1d
 #define FT_HANDSHAKE_DONE           0x1e
+#define FT_SUBCONN                  0x20
 #define FT_DATAGRAM                 0x30
 #define FT_MP_NEW_CONNECTION_ID     0x40
 #define FT_MP_RETIRE_CONNECTION_ID  0x41
@@ -647,6 +648,7 @@ static const range_string quic_frame_type_vals[] = {
     { 0x1c, 0x1c,   "CONNECTION_CLOSE (Transport)" },
     { 0x1d, 0x1d,   "CONNECTION_CLOSE (Application)" },
     { 0x1e, 0x1e,   "HANDSHAKE_DONE" },
+    { 0x20, 0x20,   "SUBCONN"},
     { 0x30, 0x31,   "DATAGRAM" },
     { 0x40, 0x40,   "MP_NEW_CONNECTION_ID" },
     { 0x41, 0x41,   "MP_RETIRE_CONNECTION_ID" },
@@ -1828,6 +1830,32 @@ dissect_quic_frame_type(tvbuff_t *tvb, packet_info *pinfo, proto_tree *quic_tree
                 col_set_writable(pinfo->cinfo, -1, TRUE);
             }
             offset += (guint32)crypto_length;
+        }
+        break;
+        case FT_SUBCONN: {
+            gint32 nci_length;
+            //gint32 lenvar = 0;
+            gboolean valid_cid = FALSE;
+
+            col_append_fstr(pinfo->cinfo, COL_INFO, ", SUBCONN");
+
+            ti = proto_tree_add_item_ret_uint(ft_tree, hf_quic_nci_connection_id_length, tvb, offset, 1, ENC_BIG_ENDIAN, &nci_length);
+            offset++;
+
+            valid_cid = nci_length >= 1 && nci_length <= QUIC_MAX_CID_LENGTH;
+            if (!valid_cid) {
+                expert_add_info_format(pinfo, ti, &ei_quic_protocol_violation,
+                            "Connection ID Length must be between 1 and %d bytes", QUIC_MAX_CID_LENGTH);
+            }
+
+            proto_tree_add_item(ft_tree, hf_quic_nci_connection_id, tvb, offset, nci_length, ENC_NA);
+            //if (valid_cid && quic_info) {
+            //    quic_cid_t cid = {.len=0};
+                //tvb_memcpy(tvb, cid.cid, offset, nci_length);
+                //cid.len = nci_length;
+                //quic_connection_add_cid(quic_info, &cid, from_server);
+            //}
+            offset += nci_length;
         }
         break;
         case FT_NEW_TOKEN: {
